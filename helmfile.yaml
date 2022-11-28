@@ -1,0 +1,51 @@
+---
+#helmDefaults:
+#  kubeContext: "default"
+
+repositories:
+  - name: argo
+    url: https://argoproj.github.io/argo-helm
+
+releases:
+  - name: "argocd-cmp"
+    namespace: "{{ env "ARGOCD_NAMESPACE" | default "argocd"}}"
+    createNamespace: true
+    chart: "./argocd-cmp"
+
+  - name: "argocd"
+    namespace: "{{ env "ARGOCD_NAMESPACE" | default "argocd"}}"
+    createNamespace: true
+    chart: "argo/argo-cd"
+    values:
+      - configs:
+          params:
+            "server.insecure": true # only important for k3s with traefik
+      - repoServer:
+          extraContainers:
+            - name: example-plugin
+              image: registry.access.redhat.com/ubi8/ubi
+              command: ["/var/run/argocd/argocd-cmp-server"]
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 999 # remove this for openshift deployments
+              volumeMounts:
+                - mountPath: /var/run/argocd
+                  name: var-files
+                - mountPath: /home/argocd/cmp-server/plugins
+                  name: plugins
+                - mountPath: /home/argocd/cmp-server/config/plugin.yaml
+                  subPath: example-plugin.yaml
+                  name: argocd-cmp
+            #- name: another-plugin
+            # ...
+          volumes:
+            - configMap:
+                name: argocd-cmp
+              name: argocd-cmp
+
+  - name: "argocd-ingress"
+    namespace: "{{ env "ARGOCD_NAMESPACE" | default "argocd"}}"
+    createNamespace: true
+    chart: "./argocd-ingress"
+    values:
+      - hostname: "{{ requiredEnv "ARGOCD_HOSTNAME" }}"
